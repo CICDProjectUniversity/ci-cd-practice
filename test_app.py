@@ -23,15 +23,3 @@ class TestCalculator(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-```
-
-4. Commit message: `Добавлены тесты`
-5. Нажми **Commit new file**
-
-## Шаг 5: Создание requirements.txt
-
-1. **Add file** → **Create new file**
-2. Имя файла: `requirements.txt`
-3. Содержимое:
-```
-pytest==7.4.3
