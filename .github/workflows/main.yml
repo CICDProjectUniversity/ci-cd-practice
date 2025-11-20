@@ -32,3 +32,21 @@ jobs:
     - name: Проверка синтаксиса
       run: |
         python -m py_compile app.py
+
+  docs:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout кода
+      uses: actions/checkout@v3
+    
+    - name: Проверка наличия документации
+      run: |
+        if [ -f "docs/README.md" ]; then
+          echo "✓ Документация найдена"
+          cat docs/README.md
+        else
+          echo "✗ Документация отсутствует"
+          exit 1
+        fi
