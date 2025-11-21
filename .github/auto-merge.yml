@@ -1,0 +1,47 @@
+# Конфигурация автомерджа
+enable_auto_merge: true
+
+# Лейблы для автомерджа
+merge_labels:
+  required:
+    - "automerge"
+  forbidden:
+    - "do-not-merge"
+    - "work-in-progress"
+    - "needs-review"
+
+# Метод мерджа
+merge_method: squash  # merge, rebase, squash
+
+# Минимальное количество одобрений
+required_approvals: 0
+
+# Удалять ветку после мерджа
+delete_branch_on_merge: true
+
+# Автоматически обновлять PR с базовой веткой
+auto_update: true
+
+# Условия для разных типов PR
+rules:
+  - name: "Dependabot minor updates"
+    match:
+      author: "dependabot[bot]"
+      update_type: ["version-update:semver-minor", "version-update:semver-patch"]
+    action:
+      merge_method: squash
+      required_approvals: 0
+      
+  - name: "Documentation updates"
+    match:
+      files: ["*.md", "docs/**"]
+    action:
+      merge_method: squash
+      required_approvals: 0
+      
+  - name: "Regular PRs"
+    match:
+      labels: ["automerge"]
+    action:
+      merge_method: squash
+      required_approvals: 1
