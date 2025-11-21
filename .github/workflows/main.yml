@@ -19,7 +19,7 @@ jobs:
     
     steps:
     - name: 📥 Checkout кода
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     
     - name: 🐍 Установка Python
       uses: actions/setup-python@v4
@@ -64,7 +64,7 @@ jobs:
     
     steps:
     - name: 📥 Checkout кода
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     
     - name: 🐍 Установка Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -112,7 +112,7 @@ jobs:
     
     steps:
     - name: 📥 Checkout кода
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     
     - name: 📚 Проверка наличия документации
       run: |
@@ -150,7 +150,7 @@ jobs:
     
     steps:
     - name: 📥 Checkout кода
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     
     - name: 🐍 Установка Python
       uses: actions/setup-python@v4
@@ -178,7 +178,7 @@ jobs:
     
     steps:
     - name: 📥 Checkout кода
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Для получения всей истории
     
