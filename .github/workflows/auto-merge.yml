@@ -1,0 +1,199 @@
+name: Auto Merge
+
+on:
+  pull_request:
+    types:
+      - labeled
+      - unlabeled
+      - synchronize
+      - opened
+      - edited
+      - ready_for_review
+      - reopened
+      - unlocked
+  pull_request_review:
+    types:
+      - submitted
+  check_suite:
+    types:
+      - completed
+  status: {}
+  workflow_dispatch:
+
+jobs:
+  # Job 1: Проверка условий для автомерджа
+  check-conditions:
+    name: Проверка условий автомерджа
+    runs-on: ubuntu-latest
+    outputs:
+      should_merge: ${{ steps.check.outputs.should_merge }}
+    
+    steps:
+    - name: 🔍 Проверка условий
+      id: check
+      run: |
+        echo "=== Проверка условий для автомерджа ==="
+        echo "Event: ${{ github.event_name }}"
+        echo "PR Number: ${{ github.event.pull_request.number || 'N/A' }}"
+        echo "Actor: ${{ github.actor }}"
+        
+        # Проверяем, есть ли лейбл automerge
+        if [[ "${{ contains(github.event.pull_request.labels.*.name, 'automerge') }}" == "true" ]]; then
+          echo "✅ Лейбл 'automerge' найден"
+          echo "should_merge=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Лейбл 'automerge' не найден"
+          echo "should_merge=false" >> $GITHUB_OUTPUT
+        fi
+
+  # Job 2: Автомердж для Dependabot
+  automerge-dependabot:
+    name: Автомердж Dependabot PRs
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || github.actor == 'dependabot-preview[bot]'
+    
+    steps:
+    - name: 🤖 Dependabot метаданные
+      id: metadata
+      uses: dependabot/fetch-metadata@v1
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+    
+    - name: ✅ Одобрение Dependabot PR
+      if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+      run: |
+        gh pr review --approve "$PR_URL"
+        gh pr comment "$PR_URL" --body "Автоматически одобрено 🤖 
+        
+        **Тип обновления:** ${{ steps.metadata.outputs.update-type }}
+        **Пакет:** ${{ steps.metadata.outputs.dependency-names }}
+        
+        PR будет смержен автоматически после прохождения всех проверок."
+      env:
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 🔀 Автомердж Dependabot PR
+      if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+      run: |
+        gh pr merge --auto --merge "$PR_URL"
+      env:
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 3: Автомердж с лейблом
+  automerge-labeled:
+    name: Автомердж PR с лейблом
+    runs-on: ubuntu-latest
+    needs: check-conditions
+    if: |
+      needs.check-conditions.outputs.should_merge == 'true' &&
+      github.event.pull_request.draft == false
+    
+    steps:
+    - name: 📥 Checkout кода
+      uses: actions/checkout@v4
+    
+    - name: ⏳ Ожидание проверок
+      uses: lewagon/wait-on-check-action@v1.3.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        check-name: 'Тестирование Python 3.10'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        wait-interval: 10
+    
+    - name: 🔀 Автоматический мердж
+      uses: pascalgn/merge-action@v0.15.6
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        MERGE_LABELS: "automerge,!do-not-merge,!work-in-progress"
+        MERGE_METHOD: "squash"
+        MERGE_COMMIT_MESSAGE: |
+          Auto-merge PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+          
+          ${{ github.event.pull_request.body }}
+          
+          Co-authored-by: ${{ github.event.pull_request.user.login }} <${{ github.event.pull_request.user.email }}>
+        MERGE_RETRIES: "3"
+        MERGE_RETRY_SLEEP: "10000"
+        UPDATE_LABELS: "automerged"
+        UPDATE_METHOD: "merge"
+        MERGE_DELETE_BRANCH: "true"
+    
+    - name: 💬 Комментарий о мердже
+      if: success()
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## ✅ PR успешно смержен автоматически!
+            
+            **Время:** ${new Date().toISOString()}
+            **Метод:** Squash and merge
+            **Инициатор:** Автоматическая система
+            
+            Спасибо за ваш вклад! 🎉`
+          })
+
+  # Job 4: Автомердж с GitHub native auto-merge
+  enable-auto-merge:
+    name: Включение GitHub Auto-merge
+    runs-on: ubuntu-latest
+    if: | 
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'auto-merge-native')
+    
+    steps:
+    - name: 🔓 Получение токена
+      id: generate_token
+      uses: tibdex/github-app-token@v1
+      with:
+        app_id: ${{ secrets.APP_ID }}
+        private_key: ${{ secrets.APP_PRIVATE_KEY }}
+      continue-on-error: true
+    
+    - name: 🔀 Включение auto-merge
+      uses: alexwilson/enable-github-automerge-action@1.0.0
+      with:
+        github-token: "${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}"
+        pull-request-number: ${{ github.event.pull_request.number }}
+        merge-method: "SQUASH"
+
+  # Job 5: Очистка после мерджа
+  cleanup:
+    name: Очистка после мерджа
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    
+    steps:
+    - name: 🗑️ Удаление ветки
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const branch = context.payload.pull_request.head.ref;
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          
+          try {
+            await github.rest.git.deleteRef({
+              owner: owner,
+              repo: repo,
+              ref: `heads/${branch}`
+            });
+            console.log(`✅ Ветка ${branch} удалена`);
+          } catch (error) {
+            console.log(`⚠️ Не удалось удалить ветку: ${error.message}`);
+          }
+    
+    - name: 📋 Обновление проектов
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          // Добавьте PR в проект "Completed"
+          console.log('PR #${{ github.event.pull_request.number }} добавлен в завершенные');
